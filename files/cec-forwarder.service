@@ -1,0 +1,17 @@
+[Unit]
+Description=Forward CEC to IR
+After=syslog.target network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/bin/cec-forwarder
+PrivateTmp=yes
+WorkingDirectory=/usr/bin
+Restart=always
+RestartSec=30
+LimitNOFILE=49152
+
+[Install]
+WantedBy=multi-user.target
