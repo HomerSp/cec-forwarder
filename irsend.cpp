@@ -30,6 +30,7 @@
 
 #include <lirc/lirc_client.h>
 
+static int lircFd = -1;
 const char* prog;
 
 int send_packet(lirc_cmd_ctx* ctx, int fd)
@@ -65,12 +66,6 @@ void reformat_simarg(char* code, char buffer[])
 }
 
 bool lircSendOnce(const char* code) {
-	int fd = lirc_get_local_socket(NULL, 0);
-	if (fd < 0) {
-		fprintf(stderr, "Cannot open socket");
-		return false;
-	}
-
 	lirc_cmd_ctx ctx;
 	int r = lirc_command_init(&ctx, "SEND_ONCE %s %s\n",
 						      "dilog", code);
@@ -81,10 +76,28 @@ bool lircSendOnce(const char* code) {
 	}
 
 	lirc_command_reply_to_stdout(&ctx);
-	if (send_packet(&ctx, fd) == -1) {
-		return false;
+
+	int retries = 0;
+	while(retries++ < 5) {
+		if(lircFd < 0) {
+			lircFd = lirc_get_local_socket(NULL, 0);
+			if (lircFd < 0) {
+				fprintf(stderr, "Cannot open socket, retrying...");
+				sleep(1);
+				continue;
+			}
+		}
+
+		if (send_packet(&ctx, lircFd) == -1) {
+			// Try to reopen the lirc socket
+			fprintf(stderr, "Could not send packet, retrying...");
+			close(lircFd);
+			lircFd = -1;
+			continue;
+		}
+
+		break;
 	}
 
-	close(fd);
-	return true;
+	return (retries < 5);
 }
