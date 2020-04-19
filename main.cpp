@@ -30,12 +30,31 @@ int main (int argc, char *argv[])
         return -1;
     }
 
-    std::cerr << "CecForwarder\n";
-    CecForwarder forwarder;
-    std::cerr << "Starting main loop\n";
+    HueConfig config("/etc/cec-forwarder/cec-forwarder.config");
+    if (!config.parse()) {
+        std::cerr << "Failed parsing config\n";
+        return -1;
+    }
+
+    if (!config.contains("Main", "keyname")) {
+        std::cerr << "Config: Required Main.keyname parameter missing\n";
+        return -1;
+    }
+
+    HueConfigSection* mainSection = config.getSection("Main");
+
+    CecForwarder forwarder(mainSection->value("keyname"));
+    forwarder.setRepeat(mainSection->intValue("repeatdelay"), mainSection->intValue("repeatrate"));
+
+    HueConfigSection* keySection = config.getSection("Keys");
+    if (keySection != nullptr) {
+        for (auto it = keySection->begin(); it != keySection->end(); it++) {
+            forwarder.addKey(std::atoi(it->first.c_str()), it->second);
+        }
+    }
+
     while (!g_bHardExit) {
-        if (!forwarder.process()) {
-            std::cerr << "!process\n";
+        if (!forwarder.ensureOpen()) {
             CEvent::Sleep(1000);
             continue;
         }

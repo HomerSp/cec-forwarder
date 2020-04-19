@@ -6,15 +6,13 @@
 
 using namespace CEC;
 
-CecForwarder::CecForwarder()
-    : mConfig("/etc/cec-forwarder")
+CecForwarder::CecForwarder(const std::string& keyname)
+    : mKeyName(keyname)
+    , mBaseDir("/etc/cec-forwarder/keys")
+    , mRepeatDelay(850)
+    , mRepeatRate(50)
     , mAdapter(nullptr)
 {
-    if (!mConfig.parse()) {
-        std::cerr << "Failed parsing config\n";
-        return;
-    }
-
     memset(&mKeyRepeat, 0, sizeof(KeyRepeat));
     mKeyRepeat.keycode = CEC_USER_CONTROL_CODE_UNKNOWN;
 
@@ -55,9 +53,39 @@ void CecForwarder::close()
     }
 }
 
-bool CecForwarder::process()
+bool CecForwarder::ensureOpen()
 {
-    return ensureOpen();
+    if (mAdapter == nullptr) {
+        return false;
+    }
+
+    if (mAdapter->GetAdapterVendorId() != 0) {
+        return true;
+    }
+
+    std::cerr << "Need to open adapter\n";
+
+    mAdapter->Close();
+
+    CEC::cec_adapter_descriptor devices[10];
+    if (mAdapter->DetectAdapters(devices, 10, NULL, true) > 0) {
+        return mAdapter->Open(devices[0].strComName);
+    } else {
+        std::cerr << "DetectAdapters empty\n";
+    }
+
+    return false;
+}
+
+void CecForwarder::addKey(int keycode, const std::string& name)
+{
+    mKeys[keycode] = name;
+}
+
+void CecForwarder::setRepeat(int delay, int rate)
+{
+    mRepeatDelay = (delay > 0) ? delay : mRepeatDelay;
+    mRepeatRate = (rate > 0) ? rate : mRepeatRate;
 }
 
 void CecForwarder::cecKeyPress(const CEC::cec_keypress* key)
@@ -70,16 +98,6 @@ void CecForwarder::cecKeyPress(const CEC::cec_keypress* key)
         return;
     }
 
-    std::string basedir = "";
-    if(mConfig.getSection("Main") != NULL) {
-        basedir = mConfig.getSection("Main")->value("irbase");
-    }
-
-    if (basedir.length() == 0) {
-        std::cerr << "Required irbase parameter missing\n";
-        return;
-    }
-
     timeval tv;
     gettimeofday(&tv, NULL);
 
@@ -88,21 +106,12 @@ void CecForwarder::cecKeyPress(const CEC::cec_keypress* key)
     if(mKeyRepeat.keycode == key->keycode) {
         uint64_t diff = timenow - mKeyRepeat.lastpress;
 
-        int repeatDelay = (mKeyRepeat.repeatstart == 0) ? 850 : 50;
-        if (mKeyRepeat.repeatstart == 0) {
-            if (mConfig.contains("Main", "repeatdelay")) {
-                repeatDelay = mConfig.getSection("Main")->intValue("repeatdelay");
-            }
-        } else if (mConfig.contains("Main", "repeatrate")) {
-            repeatDelay = mConfig.getSection("Main")->intValue("repeatrate");
-        }
-
+        int repeatDelay = (mKeyRepeat.repeatstart == 0) ? mRepeatDelay : mRepeatRate;
         if(diff < repeatDelay) {
             return;
         }
 
         std::cerr << "Key repeat " <<  key->keycode << ", diff " << diff << ", delay " << repeatDelay << "\n";
-
         if (mKeyRepeat.repeatstart == 0) {
             mKeyRepeat.repeatstart = timenow;
         }
@@ -111,13 +120,10 @@ void CecForwarder::cecKeyPress(const CEC::cec_keypress* key)
     mKeyRepeat.keycode = key->keycode;
     mKeyRepeat.lastpress = timenow;
 
-    std::cerr << "Key " << key->keycode << "\n";
-
-    if(mConfig.getSection("Keys") != NULL) {
-        std::string cmd = mConfig.getSection("Keys")->value(std::to_string(key->keycode));
-        if(cmd.size() > 0) {
-            irSend(basedir + "/" + cmd);
-        }
+    if (mKeys.count(key->keycode) > 0) {
+        std::string keyName = mKeys.at(key->keycode);
+        std::cerr << "Key " << keyName << "\n";
+        irSend(mBaseDir + "/" + mKeyName + "/" + keyName);
     }
 }
 
@@ -155,30 +161,6 @@ void CecForwarder::cecAlert(const CEC::libcec_alert type, const CEC::libcec_para
     default:
         break;
     }
-}
-
-bool CecForwarder::ensureOpen()
-{
-    if (mAdapter == nullptr) {
-        return false;
-    }
-
-    if (mAdapter->GetAdapterVendorId() != 0) {
-        return true;
-    }
-
-    std::cerr << "Need to open adapter\n";
-
-    mAdapter->Close();
-
-    CEC::cec_adapter_descriptor devices[10];
-    if (mAdapter->DetectAdapters(devices, 10, NULL, true) > 0) {
-        return mAdapter->Open(devices[0].strComName);
-    } else {
-        std::cerr << "DetectAdapters empty\n";
-    }
-
-    return false;
 }
 
 void CecForwarder::HandleCecKeyPress(void *cbParam, const CEC::cec_keypress* key)
