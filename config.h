@@ -20,7 +20,7 @@ public:
 
 	HueConfigSection* newSection(const std::string& name);
 
-	bool parse(bool& parseFailure);
+	bool parse(bool* parseFailure = nullptr);
 	bool write();
 
 private:

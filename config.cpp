@@ -64,7 +64,7 @@ HueConfigSection* HueConfig::newSection(const std::string& name) {
 	return section;
 }
 
-bool HueConfig::parse(bool& parseFailure) {
+bool HueConfig::parse(bool* parseFailure) {
 	bool ret = false;
 
 	if(mSections.size() > 0) {
@@ -119,8 +119,8 @@ bool HueConfig::parse(bool& parseFailure) {
 		mSections.clear();
 	}
 
-	if(!ret) {
-		parseFailure = true;
+	if(!ret && parseFailure != nullptr) {
+		*parseFailure = true;
 	}
 
 	return ret;

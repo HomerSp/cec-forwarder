@@ -21,7 +21,7 @@ endif()
 find_package(p8-platform REQUIRED)
 find_package(Threads REQUIRED)
 
-set(cecforwarder_SOURCES cec-forwarder.cpp irsend.cpp config.cpp)
+set(cecforwarder_SOURCES main.cpp cecforwarder.cpp irsend.cpp config.cpp)
 
 add_executable(cec-forwarder ${cecforwarder_SOURCES})
 set_target_properties(cec-forwarder PROPERTIES VERSION ${LIBCEC_VERSION_MAJOR}.${LIBCEC_VERSION_MINOR}.${LIBCEC_VERSION_PATCH})
