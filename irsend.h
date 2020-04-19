@@ -1,6 +1,6 @@
 #ifndef IRSEND_H
 #define IRSEND_H
 
-bool lircSendOnce(const char* code); 
+bool irSend(const std::string& path); 
 
 #endif // IRSEND_H

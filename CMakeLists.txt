@@ -7,8 +7,6 @@ set(cecforwarder_VERSION_MAJOR ${LIBCEC_VERSION_MAJOR})
 set(cecforwarder_VERSION_MINOR ${LIBCEC_VERSION_MINOR})
 set(cecforwarder_VERSION_PATCH ${LIBCEC_VERSION_PATCH})
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
-
 enable_language(CXX)
 include(CheckCXXSourceCompiles)
 include(CheckLibraryExists)
@@ -22,7 +20,6 @@ endif()
 
 find_package(p8-platform REQUIRED)
 find_package(Threads REQUIRED)
-find_package(LircClient REQUIRED)
 
 set(cecforwarder_SOURCES cec-forwarder.cpp irsend.cpp config.cpp)
 
@@ -30,7 +27,6 @@ add_executable(cec-forwarder ${cecforwarder_SOURCES})
 set_target_properties(cec-forwarder PROPERTIES VERSION ${LIBCEC_VERSION_MAJOR}.${LIBCEC_VERSION_MINOR}.${LIBCEC_VERSION_PATCH})
 target_link_libraries(cec-forwarder ${p8-platform_LIBRARIES})
 target_link_libraries(cec-forwarder ${CMAKE_THREAD_LIBS_INIT})
-target_link_libraries(cec-forwarder ${LIRC_CLIENT_LIBRARIES})
 
 if (NOT WIN32)
   # check for dlopen

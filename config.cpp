@@ -18,6 +18,17 @@ HueConfig::~HueConfig() {
 	mSections.clear();
 }
 
+bool HueConfig::contains(const std::string& section, const std::string& key)
+{
+	for(size_t i = 0; i < mSections.size(); i++) {
+		if(mSections[i]->name() == section) {
+			return mSections[i]->hasKey(key);
+		}
+	}
+
+	return false;
+}
+
 HueConfigSection* HueConfig::getSection(const std::string& name, std::string key, std::string value) const {
 	for(size_t i = 0; i < mSections.size(); i++) {
 		if(mSections[i]->name() != name) {

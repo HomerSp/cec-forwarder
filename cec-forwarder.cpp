@@ -55,7 +55,7 @@ using namespace P8PLATFORM;
 #include "irsend.h"
 #include "config.h"
 
-static void PrintToStdOut(const char *strFormat, ...);
+static void FindPort();
 
 ICECCallbacks        g_callbacks;
 libcec_configuration g_config;
@@ -72,7 +72,8 @@ struct CECIRKeys {
 
 struct KeyRepeat {
   cec_user_control_code keycode;
-  uint64_t lastpress; 
+  uint64_t lastpress;
+  uint64_t repeatstart;
 };
 
 KeyRepeat g_keyRepeat;
@@ -93,9 +94,16 @@ public:
     if (g_parser)
     {
       g_parser->Close();
-      while (!g_parser->Open(g_strPort.c_str()))
+      FindPort();
+      while (true)
       {
-        PrintToStdOut("Failed to reconnect, retrying in a bit\n");
+        FindPort();
+        std::cerr << "Attempting to reconnect to " <<  g_strPort.c_str() << "\n";
+        if (g_parser->Open(g_strPort.c_str())) {
+            break;
+        }
+
+        std::cerr << "Failed to reconnect, retrying in a bit\n";
         sleep(500);
       }
     }
@@ -106,149 +114,77 @@ private:
   CReconnect(void) {}
 };
 
-static void PrintToStdOut(const char *strFormat, ...)
+static void FindPort()
 {
-  std::string strLog;
-
-  va_list argList;
-  va_start(argList, strFormat);
-  strLog = StringUtils::FormatV(strFormat, argList);
-  va_end(argList);
-
-  CLockObject lock(g_outputMutex);
-  std::cout << strLog << std::endl;
-}
-
-void CecLogMessage(void *UNUSED(cbParam), const cec_log_message* message)
-{
-  //PrintToStdOut("CecLogMessage: %s\n", message->message);
+    cec_adapter_descriptor devices[10];
+    uint8_t iDevicesFound = g_parser->DetectAdapters(devices, 10, NULL, true);
+    if (iDevicesFound > 0)
+    {
+      g_strPort = devices[0].strComName;
+    } else {
+      g_strPort = "";
+    }
 }
 
 void CecKeyPress(void *UNUSED(cbParam), const cec_keypress* key)
 {
-  //PrintToStdOut("CecKeyPress: key %d, duration %d, last %d\n", key->keycode, key->duration, g_keyRepeat.keycode);
   if(key->duration != 0) {
     return;
   }
 
-  if(g_keyRepeat.keycode == key->keycode) {
-    timeval tv;
-    gettimeofday(&tv, NULL);
-    
-    uint64_t timenow = (tv.tv_sec * 1000) + (tv.tv_usec / 1000UL);
-    uint64_t diff = timenow - g_keyRepeat.lastpress;
+  std::string basedir = "";
+  if(g_iniconfig->getSection("Main") != NULL) {
+    basedir = g_iniconfig->getSection("Main")->value("irbase");
+  }
 
-    int repeatDelay = 700;
-    if(g_iniconfig->getSection("Main") != NULL) {
-      repeatDelay = g_iniconfig->getSection("Main")->intValue("repeatdelay");
-    }
-
-    if(diff < repeatDelay) {
-      return;
-    }
+  if (basedir.length() == 0) {
+    std::cerr << "Required irbase parameter missing\n";
+    return;
   }
 
   timeval tv;
   gettimeofday(&tv, NULL);
 
+  uint64_t timenow = (tv.tv_sec * 1000) + (tv.tv_usec / 1000UL);
+
+  if(g_keyRepeat.keycode == key->keycode) {
+    uint64_t diff = timenow - g_keyRepeat.lastpress;
+
+    int repeatDelay = (g_keyRepeat.repeatstart == 0) ? 850 : 50;
+    if (g_keyRepeat.repeatstart == 0) {
+      if (g_iniconfig->contains("Main", "repeatdelay")) {
+        repeatDelay = g_iniconfig->getSection("Main")->intValue("repeatdelay");
+      }
+    } else if (g_iniconfig->contains("Main", "repeatrate")) {
+      repeatDelay = g_iniconfig->getSection("Main")->intValue("repeatrate");
+    }
+
+    if(diff < repeatDelay) {
+      return;
+    }
+
+    std::cerr << "Key repeat " <<  key->keycode << ", diff " << diff << ", delay " << repeatDelay << "\n";
+
+    if (g_keyRepeat.repeatstart == 0) {
+      g_keyRepeat.repeatstart = timenow;
+    }
+  }
+
   g_keyRepeat.keycode = key->keycode;
-  g_keyRepeat.lastpress = (tv.tv_sec * 1000) + (tv.tv_usec / 1000UL);
+  g_keyRepeat.lastpress = timenow;
+
+  std::cerr << "Key " << key->keycode << "\n";
 
   if(g_iniconfig->getSection("Keys") != NULL) {
     std::string cmd = g_iniconfig->getSection("Keys")->value(std::to_string(key->keycode));
     if(cmd.size() > 0) {
-      lircSendOnce(cmd.c_str());
+      irSend(basedir + "/" + cmd);
     }
   }
-
-  /*switch(key->keycode) {
-  case 0x1:
-    lircSendOnce("KEY_UP");
-    break;
-  case 0x2:
-    lircSendOnce("KEY_DOWN");
-    break;
-  case 0x3:
-    lircSendOnce("KEY_LEFT");
-    break;
-  case 0x4:
-    lircSendOnce("KEY_RIGHT");
-    break;
-  case 0xd:
-    lircSendOnce("KEY_BACK");
-    break;
-  case 0x20:
-    lircSendOnce("KEY_0");
-    break;
-  case 0x21:
-    lircSendOnce("KEY_1");
-    break;
-  case 0x22:
-    lircSendOnce("KEY_2");
-    break;
-  case 0x23:
-    lircSendOnce("KEY_3");
-    break;
-  case 0x24:
-    lircSendOnce("KEY_4");
-    break;
-  case 0x25:
-    lircSendOnce("KEY_5");
-    break;
-  case 0x26:
-    lircSendOnce("KEY_6");
-    break;
-  case 0x27:
-    lircSendOnce("KEY_7");
-    break;
-  case 0x28:
-    lircSendOnce("KEY_8");
-    break;
-  case 0x29:
-    lircSendOnce("KEY_9");
-    break;
-  case 0x30:
-    lircSendOnce("KEY_PAGEUP");
-    break;
-  case 0x31:
-    lircSendOnce("KEY_PAGEDOWN");
-    break;
-  case 0x35:
-    lircSendOnce("KEY_INFO");
-    break;
-  case 0x44:
-    lircSendOnce("KEY_PLAYPAUSE");
-    break;
-  case 0x45:
-    lircSendOnce("KEY_STOP");
-    break;
-  case 0x46:
-    lircSendOnce("KEY_PLAYPAUSE");
-    break;
-  case 0x47:
-    lircSendOnce("KEY_RECORD");
-    break;
-  case 0x48:
-    lircSendOnce("KEY_REWIND");
-    break;
-  case 0x49:
-    lircSendOnce("KEY_FASTFORWARD");
-    break;
-  case 0x51:
-    lircSendOnce("KEY_SUBTITLE");
-    break;
-  case 0x53:
-    lircSendOnce("KEY_EPG");
-    break;
-  case 0x76:
-    lircSendOnce("KEY_TEXT");
-    break;
-  }*/
 }
 
 void CecCommand(void *UNUSED(cbParam), const cec_command* command)
 {
-  //PrintToStdOut("CecLogMessage: %d\n", command->opcode);
   switch(command->opcode) {
   case CEC_OPCODE_USER_CONTROL_PRESSED:
     if(command->parameters.size > 0) {
@@ -258,22 +194,20 @@ void CecCommand(void *UNUSED(cbParam), const cec_command* command)
 
     break;
   case CEC_OPCODE_USER_CONTROL_RELEASE:
+    memset(&g_keyRepeat, 0, sizeof(KeyRepeat));
     g_keyRepeat.keycode = CEC_USER_CONTROL_CODE_UNKNOWN;
-    g_keyRepeat.lastpress = 0;
     break;
   }
 }
 
 void CecAlert(void *UNUSED(cbParam), const libcec_alert type, const libcec_parameter UNUSED(param))
 {
-  PrintToStdOut("CecAlert %d\n", type);
-
   switch (type)
   {
   case CEC_ALERT_CONNECTION_LOST:
     if (!CReconnect::Get().IsRunning())
     {
-      PrintToStdOut("Connection lost - trying to reconnect\n");
+      std::cerr << "Connection lost - trying to reconnect\n";
       CReconnect::Get().CreateThread(false);
     }
     break;
@@ -284,7 +218,7 @@ void CecAlert(void *UNUSED(cbParam), const libcec_alert type, const libcec_param
 
 void sighandler(int iSignal)
 {
-  PrintToStdOut("signal caught: %d - exiting", iSignal);
+  std::cerr << "signal caught: " << iSignal << " - exiting\n";
   g_bExit = true;
   g_bHardExit = true;
 }
@@ -293,7 +227,7 @@ int main (int argc, char *argv[])
 {
   if (signal(SIGINT, sighandler) == SIG_ERR)
   {
-    PrintToStdOut("can't register sighandler");
+    std::cerr << "can't register sighandler\n";
     return -1;
   }
 
@@ -301,15 +235,14 @@ int main (int argc, char *argv[])
   g_iniconfig = new HueConfig("/etc/cec-forwarder");
   g_iniconfig->parse(ok);
 
+  memset(&g_keyRepeat, 0, sizeof(KeyRepeat));
   g_keyRepeat.keycode = CEC_USER_CONTROL_CODE_UNKNOWN;
-  g_keyRepeat.lastpress = 0;
 
   g_config.Clear();
   g_callbacks.Clear();
   snprintf(g_config.strDeviceName, 13, "CECForwarder");
   g_config.clientVersion      = LIBCEC_VERSION_CURRENT;
   g_config.bActivateSource    = 0;
-  g_callbacks.logMessage      = &CecLogMessage;
   g_callbacks.keyPress        = &CecKeyPress;
   g_callbacks.commandReceived = &CecCommand;
   g_callbacks.alert           = &CecAlert;
@@ -320,14 +253,9 @@ int main (int argc, char *argv[])
   g_parser = LibCecInitialise(&g_config);
   if (!g_parser)
   {
-#ifdef __WINDOWS__
-    std::cout << "Cannot load cec.dll" << std::endl;
-#else
-    std::cout << "Cannot load libcec.so" << std::endl;
-#endif
-
-    if (g_parser)
+    if (g_parser) {
       UnloadLibCec(g_parser);
+    }
 
     return 1;
   }
@@ -346,17 +274,17 @@ int main (int argc, char *argv[])
     }
 
     if(!g_strPort.empty()) {
-      PrintToStdOut("opening a connection to the CEC adapter %s...", g_strPort.c_str());
+      std::cerr << "opening a connection to the CEC adapter at " << g_strPort.c_str() << "...\n";
       if (!g_parser->Open(g_strPort.c_str()))
       {
-        PrintToStdOut("unable to open the device on port %s", g_strPort.c_str());
+        std::cerr << "unable to open the device on port " << g_strPort.c_str() << "!\n";
         UnloadLibCec(g_parser);
         return 1;
       }
 
       while (!g_bHardExit && !g_bExit)
       {
-        CEvent::Sleep(50);
+        CEvent::Sleep(1);
       }
 
       g_bExit = false;

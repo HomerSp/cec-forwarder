@@ -13,6 +13,8 @@ public:
 	HueConfig(const std::string &path);
 	~HueConfig();
 
+	bool contains(const std::string& section, const std::string& key);
+
 	HueConfigSection* getSection(const std::string& name, std::string key = "", std::string value = "") const;
 	const std::vector<HueConfigSection*> getSections(const std::string& name, std::string key = "", std::string value = "") const;
 
