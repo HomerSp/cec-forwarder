@@ -1,6 +1,7 @@
 #include <unordered_map>
 #include <libcec/cec.h>
 #include "config.h"
+#include "lircpp.h"
 
 struct KeyRepeat {
     CEC::cec_user_control_code keycode;
@@ -40,4 +41,6 @@ private:
     CEC::ICECCallbacks mCecCallbacks;
     CEC::libcec_configuration mCecConfig;
     CEC::ICECAdapter *mAdapter;
+
+    LircPP mLirc;
 };

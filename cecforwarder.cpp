@@ -1,7 +1,6 @@
 #include <iostream>
 #include <sys/time.h>
 #include "cecforwarder.h"
-#include "irsend.h"
 #include <libcec/cecloader.h>
 
 using namespace CEC;
@@ -12,6 +11,7 @@ CecForwarder::CecForwarder(const std::string& keyname)
     , mRepeatDelay(850)
     , mRepeatRate(50)
     , mAdapter(nullptr)
+    , mLirc(mBaseDir + "/" + keyname)
 {
     memset(&mKeyRepeat, 0, sizeof(KeyRepeat));
     mKeyRepeat.keycode = CEC_USER_CONTROL_CODE_UNKNOWN;
@@ -123,7 +123,7 @@ void CecForwarder::cecKeyPress(const CEC::cec_keypress* key)
     if (mKeys.count(key->keycode) > 0) {
         std::string keyName = mKeys.at(key->keycode);
         std::cerr << "Key " << keyName << "\n";
-        irSend(mBaseDir + "/" + mKeyName + "/" + keyName);
+        mLirc.send(keyName);
     }
 }
 
