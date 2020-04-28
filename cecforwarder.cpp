@@ -5,13 +5,11 @@
 
 using namespace CEC;
 
-CecForwarder::CecForwarder(const std::string& keyname)
-    : mKeyName(keyname)
-    , mBaseDir("/etc/cec-forwarder/keys")
-    , mRepeatDelay(850)
+CecForwarder::CecForwarder(const std::string& baseDir, const std::string& keyname, const std::string& cecname)
+    : mRepeatDelay(850)
     , mRepeatRate(50)
     , mAdapter(nullptr)
-    , mLirc(mBaseDir + "/" + keyname)
+    , mLirc(baseDir + "/keys/" + keyname)
 {
     memset(&mKeyRepeat, 0, sizeof(KeyRepeat));
     mKeyRepeat.keycode = CEC_USER_CONTROL_CODE_UNKNOWN;
@@ -24,7 +22,7 @@ CecForwarder::CecForwarder(const std::string& keyname)
     mCecCallbacks.alert           = &CecForwarder::HandleCecAlert;
     mCecCallbacks.logMessage      = &CecForwarder::HandleCecLogMessage;
 
-    snprintf(mCecConfig.strDeviceName, 13, "CECForwarder");
+    snprintf(mCecConfig.strDeviceName, std::max(cecname.length() + 1, 13U), cecname.c_str());
     mCecConfig.callbackParam = static_cast<void*>(this);
     mCecConfig.clientVersion = CEC::LIBCEC_VERSION_CURRENT;
     mCecConfig.bActivateSource = 0;

@@ -12,7 +12,7 @@ struct KeyRepeat {
 class CecForwarder
 {
 public:
-    CecForwarder(const std::string& keyname);
+    CecForwarder(const std::string& baseDir, const std::string& keyname, const std::string& cecname);
     ~CecForwarder();
 
     void close();
@@ -31,8 +31,6 @@ private:
     static void HandleCecAlert(void *cbParam, const CEC::libcec_alert type, const CEC::libcec_parameter param);
     static void HandleCecLogMessage(void *cbParam, const CEC::cec_log_message* message);
 
-    std::string mKeyName;
-    std::string mBaseDir;
     int mRepeatDelay, mRepeatRate;
     std::unordered_map<int, std::string> mKeys;
 

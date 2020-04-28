@@ -55,9 +55,6 @@ endif()
 include_directories(${p8-platform_INCLUDE_DIRS}
                     ${PROJECT_SOURCE_DIR})
 
-# write env.h
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/env.h.in ${CMAKE_CURRENT_SOURCE_DIR}/env.h)
-
 if (WIN32)
   install(TARGETS     cec-forwarder
           DESTINATION .)

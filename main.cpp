@@ -43,7 +43,12 @@ int main (int argc, char *argv[])
 
     HueConfigSection* mainSection = config.getSection("Main");
 
-    CecForwarder forwarder(mainSection->value("keyname"));
+    std::string cecname = "CECForwarder";
+    if (mainSection->hasKey("cecname")) {
+        cecname = mainSection->value("cecname");
+    }
+
+    CecForwarder forwarder("/etc/cec-forwarder", mainSection->value("keyname"), cecname);
     forwarder.setRepeat(mainSection->intValue("repeatdelay"), mainSection->intValue("repeatrate"));
 
     HueConfigSection* keySection = config.getSection("Keys");
