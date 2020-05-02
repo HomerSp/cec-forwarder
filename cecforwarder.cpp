@@ -5,9 +5,11 @@
 
 using namespace CEC;
 
-CecForwarder::CecForwarder(const std::string& baseDir, const std::string& keyname, const std::string& cecname)
-    : mRepeatDelay(850)
+CecForwarder::CecForwarder(const std::string& baseDir, const std::string& keyname, const std::string& cecname, bool verbose)
+    : mVerbose(verbose)
+    , mRepeatDelay(850)
     , mRepeatRate(50)
+    , mAdapterOpen(false)
     , mAdapter(nullptr)
     , mLirc(baseDir + "/keys/" + keyname)
 {
@@ -22,12 +24,12 @@ CecForwarder::CecForwarder(const std::string& baseDir, const std::string& keynam
     mCecCallbacks.alert           = &CecForwarder::HandleCecAlert;
     mCecCallbacks.logMessage      = &CecForwarder::HandleCecLogMessage;
 
-    snprintf(mCecConfig.strDeviceName, std::max(cecname.length() + 1, 13U), cecname.c_str());
+    snprintf(mCecConfig.strDeviceName, LIBCEC_OSD_NAME_SIZE, cecname.c_str());
     mCecConfig.callbackParam = static_cast<void*>(this);
     mCecConfig.clientVersion = CEC::LIBCEC_VERSION_CURRENT;
     mCecConfig.bActivateSource = 0;
     mCecConfig.callbacks = &mCecCallbacks;
-    mCecConfig.deviceTypes.Add(CEC::CEC_DEVICE_TYPE_RECORDING_DEVICE);
+    mCecConfig.deviceTypes.Add(CEC::CEC_DEVICE_TYPE_PLAYBACK_DEVICE);
 
     mAdapter = LibCecInitialise(&mCecConfig);
     if (mAdapter == nullptr) {
@@ -47,6 +49,7 @@ void CecForwarder::close()
 {
     if (mAdapter != nullptr) {
         mAdapter->Close();
+        mAdapterOpen = false;
         UnloadLibCec(mAdapter);
     }
 }
@@ -57,7 +60,7 @@ bool CecForwarder::ensureOpen()
         return false;
     }
 
-    if (mAdapter->GetAdapterVendorId() != 0) {
+    if (mAdapterOpen) {
         return true;
     }
 
@@ -65,14 +68,21 @@ bool CecForwarder::ensureOpen()
 
     mAdapter->Close();
 
+    bool ret = false;
     CEC::cec_adapter_descriptor devices[10];
     if (mAdapter->DetectAdapters(devices, 10, NULL, true) > 0) {
-        return mAdapter->Open(devices[0].strComName);
+        ret = mAdapter->Open(devices[0].strComName);
+        if (ret) {
+            std::cerr << "Opened adapter " << devices[0].strComName << "\n";
+        } else {
+            std::cerr << "Failed opening adapter " << devices[0].strComName << "\n";
+        }
     } else {
-        std::cerr << "DetectAdapters empty\n";
+        std::cerr << "No adapters found\n";
     }
 
-    return false;
+    mAdapterOpen = ret;
+    return ret;
 }
 
 void CecForwarder::addKey(int keycode, const std::string& name)
@@ -88,8 +98,8 @@ void CecForwarder::setRepeat(int delay, int rate)
 
 void CecForwarder::cecKeyPress(const CEC::cec_keypress* key)
 {
-    if (!ensureOpen()) {
-        return;
+    if (mVerbose) {
+        std::cout << "cecKeyPress " << key->keycode << "\n";
     }
 
     if(key->duration != 0) {
@@ -127,8 +137,8 @@ void CecForwarder::cecKeyPress(const CEC::cec_keypress* key)
 
 void CecForwarder::cecCommand(const CEC::cec_command* command)
 {
-    if (!ensureOpen()) {
-        return;
+    if (mVerbose) {
+        std::cout << "cecCommand " << command->opcode << "\n";
     }
 
     switch(command->opcode) {
@@ -148,17 +158,36 @@ void CecForwarder::cecCommand(const CEC::cec_command* command)
 
 void CecForwarder::cecAlert(const CEC::libcec_alert type, const CEC::libcec_parameter param)
 {
-    if (!ensureOpen()) {
-        return;
+    if (mVerbose) {
+        std::cout << "cecAlert " << type << "\n";
     }
 
     switch (type) {
     case CEC_ALERT_CONNECTION_LOST:
-        mAdapter->Close();
+        std::cout << "Lost connection, closing adapter\n";
+        mAdapterOpen = false;
         break;
     default:
         break;
     }
+}
+
+void CecForwarder::cecLogMessage(const CEC::cec_log_message* message)
+{
+    if (!mVerbose) {
+        return;
+    }
+
+    static std::unordered_map<CEC::cec_log_level, std::string> sLogLevels = {
+        {CEC::CEC_LOG_ERROR, "Error"},
+        {CEC::CEC_LOG_WARNING, "Warning"},
+        {CEC::CEC_LOG_NOTICE, "Notice"},
+        {CEC::CEC_LOG_TRAFFIC, "Traffic"},
+        {CEC::CEC_LOG_DEBUG, "Debug"}
+    };
+
+    std::string level = (sLogLevels.find(message->level) != sLogLevels.end()) ? sLogLevels.at(message->level) : "Unknown";
+    std::cout << level << " [" << message->time << "]: " << message->message << "\n";
 }
 
 void CecForwarder::HandleCecKeyPress(void *cbParam, const CEC::cec_keypress* key)
@@ -178,4 +207,5 @@ void CecForwarder::HandleCecAlert(void *cbParam, const CEC::libcec_alert type, c
 
 void CecForwarder::HandleCecLogMessage(void *cbParam, const CEC::cec_log_message* message)
 {
+    static_cast<CecForwarder*>(cbParam)->cecLogMessage(message);
 }

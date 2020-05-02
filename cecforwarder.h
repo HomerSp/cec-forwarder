@@ -1,3 +1,4 @@
+#include <atomic>
 #include <unordered_map>
 #include <libcec/cec.h>
 #include "config.h"
@@ -12,7 +13,7 @@ struct KeyRepeat {
 class CecForwarder
 {
 public:
-    CecForwarder(const std::string& baseDir, const std::string& keyname, const std::string& cecname);
+    CecForwarder(const std::string& baseDir, const std::string& keyname, const std::string& cecname, bool verbose);
     ~CecForwarder();
 
     void close();
@@ -25,12 +26,14 @@ private:
     void cecKeyPress(const CEC::cec_keypress* key);
     void cecCommand(const CEC::cec_command* command);
     void cecAlert(const CEC::libcec_alert type, const CEC::libcec_parameter param);
+    void cecLogMessage(const CEC::cec_log_message* message);
 
     static void HandleCecKeyPress(void *cbParam, const CEC::cec_keypress* key);
     static void HandleCecCommand(void *cbParam, const CEC::cec_command* command);
     static void HandleCecAlert(void *cbParam, const CEC::libcec_alert type, const CEC::libcec_parameter param);
     static void HandleCecLogMessage(void *cbParam, const CEC::cec_log_message* message);
 
+    bool mVerbose;
     int mRepeatDelay, mRepeatRate;
     std::unordered_map<int, std::string> mKeys;
 
@@ -38,6 +41,8 @@ private:
 
     CEC::ICECCallbacks mCecCallbacks;
     CEC::libcec_configuration mCecConfig;
+
+    std::atomic<bool> mAdapterOpen;
     CEC::ICECAdapter *mAdapter;
 
     LircPP mLirc;

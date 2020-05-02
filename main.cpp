@@ -30,6 +30,11 @@ int main (int argc, char *argv[])
         return -1;
     }
 
+    bool verbose = false;
+    if (argc > 1 && std::string(argv[1]) == "-v") {
+        verbose = true;
+    }
+
     HueConfig config("/etc/cec-forwarder/cec-forwarder.config");
     if (!config.parse()) {
         std::cerr << "Failed parsing config\n";
@@ -48,7 +53,7 @@ int main (int argc, char *argv[])
         cecname = mainSection->value("cecname");
     }
 
-    CecForwarder forwarder("/etc/cec-forwarder", mainSection->value("keyname"), cecname);
+    CecForwarder forwarder("/etc/cec-forwarder", mainSection->value("keyname"), cecname, verbose);
     forwarder.setRepeat(mainSection->intValue("repeatdelay"), mainSection->intValue("repeatrate"));
 
     HueConfigSection* keySection = config.getSection("Keys");
