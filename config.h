@@ -64,7 +64,7 @@ public:
 			return def;
 		}
 
-		return atoi(value(key).c_str());
+		return strtoul(value(key).c_str(), nullptr, 0);
 	}
 
 	void setValue(const std::string& key, const std::string& value);

@@ -1,7 +1,9 @@
 #include <atomic>
 #include <unordered_map>
 #include <libcec/cec.h>
+
 #include "config.h"
+#include "irreader.h"
 #include "lircpp.h"
 
 struct KeyRepeat {
@@ -10,7 +12,7 @@ struct KeyRepeat {
     uint64_t repeatstart;
 };
 
-class CecForwarder
+class CecForwarder : public IRReader::Callback
 {
 public:
     CecForwarder(const std::string& baseDir, const std::string& keyname, const std::string& cecname, bool verbose);
@@ -21,6 +23,8 @@ public:
 
     void addKey(int keycode, const std::string& name);
     void setRepeat(int delay, int rate);
+
+    void onReceive(const KeyName& key) override;
 
 private:
     void cecKeyPress(const CEC::cec_keypress* key);
@@ -46,4 +50,6 @@ private:
     CEC::ICECAdapter *mAdapter;
 
     LircPP mLirc;
+
+    std::atomic<bool> mPower, mPowerHome;
 };

@@ -5,14 +5,20 @@
 #include <string>
 #include <vector>
 
+#include "keyname.h"
+
 class LircPP {
 public:
     LircPP(const std::string& keyspath);
 
-    bool send(const std::string& key);
+    bool receive(KeyName& key);
+    bool send(const KeyName& key);
 
 private:
-    std::unordered_map<std::string, std::vector<unsigned int> > mData;
+    bool checkTarget(unsigned int value, unsigned int target);
+    bool dataToKey(const std::vector<std::pair<bool, unsigned int> >& data, uint32_t &value);
+
+    std::unordered_map<KeyName, uint32_t> mData;
 };
 
 #endif //LIRCPP_H

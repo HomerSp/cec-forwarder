@@ -12,6 +12,8 @@ CecForwarder::CecForwarder(const std::string& baseDir, const std::string& keynam
     , mAdapterOpen(false)
     , mAdapter(nullptr)
     , mLirc(baseDir + "/keys/" + keyname)
+    , mPower(false)
+    , mPowerHome(false)
 {
     memset(&mKeyRepeat, 0, sizeof(KeyRepeat));
     mKeyRepeat.keycode = CEC_USER_CONTROL_CODE_UNKNOWN;
@@ -96,6 +98,30 @@ void CecForwarder::setRepeat(int delay, int rate)
     mRepeatRate = (rate > 0) ? rate : mRepeatRate;
 }
 
+void CecForwarder::onReceive(const KeyName& key)
+{
+    std::cerr << "onReceive " << key.name() << "\n";
+
+    switch (key.value()) {
+    case KeyName::KEY_HOME:
+        mPowerHome = true;
+
+        mAdapter->PowerOnDevices(CEC::CECDEVICE_TV);
+        mAdapter->PowerOnDevices(CEC::CECDEVICE_PLAYBACKDEVICE2);
+
+        mAdapter->SendKeypress(CEC::CECDEVICE_PLAYBACKDEVICE2, CEC::CEC_USER_CONTROL_CODE_POWER_ON_FUNCTION, true);
+        mAdapter->SendKeyRelease(CEC::CECDEVICE_PLAYBACKDEVICE2, true);
+
+        mAdapter->SendKeypress(CEC::CECDEVICE_PLAYBACKDEVICE2, CEC::CEC_USER_CONTROL_CODE_ROOT_MENU, true);
+        mAdapter->SendKeyRelease(CEC::CECDEVICE_PLAYBACKDEVICE2, true);
+
+        mAdapter->SendKeypress(CEC::CECDEVICE_PLAYBACKDEVICE2, CEC::CEC_USER_CONTROL_CODE_ROOT_MENU, true);
+        mAdapter->SendKeyRelease(CEC::CECDEVICE_PLAYBACKDEVICE2, true);
+
+        break;
+    }
+}
+
 void CecForwarder::cecKeyPress(const CEC::cec_keypress* key)
 {
     if (mVerbose) {
@@ -144,14 +170,37 @@ void CecForwarder::cecCommand(const CEC::cec_command* command)
     switch(command->opcode) {
     case CEC_OPCODE_USER_CONTROL_PRESSED:
         if(command->parameters.size > 0) {
-        cec_keypress key = {(cec_user_control_code) command->parameters.data[0], 0};
-        cecKeyPress(&key);
-    }
+            cec_keypress key = {(cec_user_control_code) command->parameters.data[0], 0};
+            cecKeyPress(&key);
+        }
 
-    break;
+        break;
     case CEC_OPCODE_USER_CONTROL_RELEASE:
         memset(&mKeyRepeat, 0, sizeof(KeyRepeat));
         mKeyRepeat.keycode = CEC_USER_CONTROL_CODE_UNKNOWN;
+        break;
+
+    case CEC_OPCODE_ROUTING_CHANGE:
+        std::cerr << "Routing change power " << mPower << ", power home " << mPowerHome << "\n";
+        if (command->parameters.size == 4) {
+            if (command->parameters[0] == 0x00 && command->parameters[1] == 0x00) {
+                std::cerr << "Setting power\n";
+                mPower = !mPowerHome;
+                mPowerHome = false;
+            }
+        }
+
+        break;
+    case CEC_OPCODE_ACTIVE_SOURCE:
+        std::cerr << "Active source power " << mPower << ", power home " << mPowerHome << "\n";
+
+        if (mPower && command->parameters.size == 2 && command->parameters[0] != 0x10) {
+            std::cerr << "Switching to adapter source\n";
+            mAdapter->SetActiveSource();
+            mPower = false;
+            mPowerHome = false;
+        }
+
         break;
     }
 }
@@ -164,7 +213,7 @@ void CecForwarder::cecAlert(const CEC::libcec_alert type, const CEC::libcec_para
 
     switch (type) {
     case CEC_ALERT_CONNECTION_LOST:
-        std::cout << "Lost connection, closing adapter\n";
+        std::cerr << "Lost connection, closing adapter\n";
         mAdapterOpen = false;
         break;
     default:

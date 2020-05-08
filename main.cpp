@@ -12,6 +12,7 @@
 #include <p8-platform/threads/threads.h>
 
 #include "cecforwarder.h"
+#include "irreader.h"
 
 using namespace P8PLATFORM;
 
@@ -30,9 +31,14 @@ int main (int argc, char *argv[])
         return -1;
     }
 
-    bool verbose = false;
-    if (argc > 1 && std::string(argv[1]) == "-v") {
-        verbose = true;
+    bool argVerbose = false, argTest = false;
+    for (int i = 1; i < argc; i++) {
+        std::string a = std::string(argv[i]);
+        if (a == "-v") {
+            argVerbose = true;
+        } else if (a == "-t") {
+            argTest = true;
+        }
     }
 
     HueConfig config("/etc/cec-forwarder/cec-forwarder.config");
@@ -53,7 +59,9 @@ int main (int argc, char *argv[])
         cecname = mainSection->value("cecname");
     }
 
-    CecForwarder forwarder("/etc/cec-forwarder", mainSection->value("keyname"), cecname, verbose);
+    IRReader irReader("/etc/cec-forwarder", mainSection->value("irname"));
+
+    CecForwarder forwarder("/etc/cec-forwarder", mainSection->value("keyname"), cecname, argVerbose);
     forwarder.setRepeat(mainSection->intValue("repeatdelay"), mainSection->intValue("repeatrate"));
 
     HueConfigSection* keySection = config.getSection("Keys");
@@ -62,6 +70,9 @@ int main (int argc, char *argv[])
             forwarder.addKey(std::atoi(it->first.c_str()), it->second);
         }
     }
+
+    irReader.addCallback(&forwarder);
+    irReader.CreateThread(false);
 
     while (!g_bHardExit) {
         if (!forwarder.ensureOpen()) {
@@ -75,5 +86,7 @@ int main (int argc, char *argv[])
     std::cerr << "All done\n";
 
     forwarder.close();
+    irReader.cancel();
+
     return (g_bHardExit) ? -1 : 0;
 }
