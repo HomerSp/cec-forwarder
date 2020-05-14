@@ -31,13 +31,13 @@ int main (int argc, char *argv[])
         return -1;
     }
 
-    bool argVerbose = false, argTest = false;
+    bool argVerbose = false, argRecord = false;
     for (int i = 1; i < argc; i++) {
         std::string a = std::string(argv[i]);
-        if (a == "-v") {
+        if (a == "-v" || a == "--verbose") {
             argVerbose = true;
-        } else if (a == "-t") {
-            argTest = true;
+        } else if (a == "-r" || a == "--record") {
+            argRecord = true;
         }
     }
 
@@ -59,7 +59,19 @@ int main (int argc, char *argv[])
         cecname = mainSection->value("cecname");
     }
 
-    IRReader irReader("/etc/cec-forwarder", mainSection->value("irname"));
+    IRReader irReader("/etc/cec-forwarder", mainSection->value("irname"), argRecord);
+    if (argRecord) {
+        irReader.setVerbose(true);
+        irReader.CreateThread(false);
+        
+        while (!g_bHardExit) {
+            CEvent::Sleep(1);
+        }
+
+        irReader.cancel();
+
+        return 0;   
+    }
 
     CecForwarder forwarder("/etc/cec-forwarder", mainSection->value("keyname"), cecname, argVerbose);
     forwarder.setRepeat(mainSection->intValue("repeatdelay"), mainSection->intValue("repeatrate"));
@@ -71,6 +83,7 @@ int main (int argc, char *argv[])
         }
     }
 
+    irReader.setVerbose(argVerbose);
     irReader.addCallback(&forwarder);
     irReader.CreateThread(false);
 

@@ -50,6 +50,4 @@ private:
     CEC::ICECAdapter *mAdapter;
 
     LircPP mLirc;
-
-    std::atomic<bool> mPower, mPowerHome;
 };

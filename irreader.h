@@ -20,8 +20,10 @@ public:
         virtual void onReceive(const KeyName& key) = 0;
     };
 public:
-    IRReader(const std::string& baseDir, const std::string& keyname);
+    IRReader(const std::string& baseDir, const std::string& keyname, bool recordOnly = false);
     virtual ~IRReader(void) {}
+
+    void setVerbose(bool v);
 
     void addCallback(Callback* cb);
 
@@ -30,8 +32,10 @@ public:
     void* Process(void) override;
 
 private:
+    std::atomic<bool> mVerbose;
     std::atomic<bool> mRunning;
 
+    bool mRecordOnly;
     LircPP mLirc;
 
     std::vector<Callback*> mCallbacks;

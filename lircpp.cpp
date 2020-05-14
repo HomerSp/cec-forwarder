@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <bitset>
+#include <cmath>
 
 #include <cerrno>
 #include <fcntl.h>
@@ -13,6 +14,7 @@
 #include "lircpp.h"
 
 LircPP::LircPP(const std::string& keyspath)
+    : mVerbose(false)
 {
     HueConfig config(keyspath);
     if (!config.parse()) {
@@ -33,7 +35,27 @@ LircPP::LircPP(const std::string& keyspath)
     }
 }
 
+void LircPP::setVerbose(bool v)
+{
+    mVerbose = v;
+}
+
 bool LircPP::receive(KeyName& key)
+{
+    uint32_t k;
+    if (receiveRaw(k)) {
+        for (auto data: mData) {
+            if (data.second == k) {
+                key = data.first;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool LircPP::receiveRaw(uint32_t& value)
 {
     int fd = open("/dev/lirc-rx", O_RDONLY | O_CLOEXEC);
     if (fd == -1) {
@@ -99,21 +121,14 @@ bool LircPP::receive(KeyName& key)
         }
     }
 
-    bool found = false;
+    close(fd);
 
-    uint32_t k;
-    if (dataToKey(data, k)) {
-        for (auto data: mData) {
-            if (data.second == k) {
-                key = data.first;
-                found = true;
-                break;
-            }
-        }
+    std::vector<unsigned int> flattened;
+    for (auto p: data) {
+        flattened.push_back(p.second);
     }
 
-    close(fd);
-    return found;
+    return dataToKey(flattened, value);
 }
 
 bool LircPP::send(const KeyName& key)
@@ -148,6 +163,19 @@ bool LircPP::send(const KeyName& key)
 
     sendData.push_back(563);
 
+    if (mVerbose) {
+        std::cout << "Sending NEC IR:\n";
+        for (uint32_t i = 0; i < sendData.size(); i++) {
+            if (i % 2 == 0) {
+                std::cout << "pulse ";
+            } else {
+                std::cout << "space ";
+            }
+
+            std::cout << sendData[i] << "\n";
+        }
+    }
+
     if (write(fd, sendData.data(), sendData.size() * sizeof(unsigned int)) <= 0) {
         return false;
     }
@@ -158,29 +186,53 @@ bool LircPP::send(const KeyName& key)
 
 bool LircPP::checkTarget(unsigned int value, unsigned int target)
 {
-    int diff = value - target;
-    return std::abs(diff) < 500;
+    float diff = 1.0f - (value / static_cast<float>(target));
+    return std::abs(floor(diff * 100.0f)) < 25;
 }
 
-bool LircPP::dataToKey(const std::vector<std::pair<bool, unsigned int> >& data, uint32_t &value)
+bool LircPP::dataToKey(const std::vector<unsigned int>& data, uint32_t &value)
 {
     value = 0;
-    if (data.size() < 66) {
+    if (data.size() < 5) {
+        if (mVerbose) {
+            std::cout << "Unhandled IR data with size " << data.size() << "\n";
+        }
+
         return false;
     }
 
+    if (dataToKeyNEC(data, value)) {
+        return true;
+    }
+
+    if (dataToKeyRC5(data, value)) {
+        return true;
+    }
+
+    if (mVerbose) {
+        std::cout << "Unhandled raw IR:\n";
+        for (uint32_t i = 0; i < data.size(); i++) {
+            std::cout << data[i] << "\n";
+        }
+
+        std::cout << "IR Done\n";
+    }
+
+    return false;
+}
+
+bool LircPP::dataToKeyNEC(const std::vector<unsigned int>& data, uint32_t& value)
+{
     // Header
-    if (!checkTarget(data[0].second, 9000) || !checkTarget(data[1].second, 4500)) {
-        std::cerr << "Invalid header\n";
+    if (!checkTarget(data[0], 9000) || !checkTarget(data[1], 4500)) {
         return false;
     }
-
+    
     std::bitset<32> bits;
-    for (unsigned int i = 2, shift = 31; i < 66; i += 2, shift--) {
-        unsigned int pulse = data[i].second;
-        unsigned int space = data[i + 1].second;
+    for (unsigned int i = 2, shift = 31; i < data.size() - 1; i += 2, shift--) {
+        unsigned int pulse = data[i];
+        unsigned int space = data[i + 1];
         if (!checkTarget(pulse, 563)) {
-            std::cerr << "Invalid pulse\n";
             return false;
         }
 
@@ -189,11 +241,89 @@ bool LircPP::dataToKey(const std::vector<std::pair<bool, unsigned int> >& data, 
         } else if (checkTarget(space, 1687)) {
             bits[shift] = 1;
         } else {
-            std::cerr << "Invalid space\n";
             return false;
         }
     }
 
     value = static_cast<uint32_t>(bits.to_ulong());
     return true;
+}
+
+bool LircPP::dataToKeyRC5(const std::vector<unsigned int>& data, uint32_t& value)
+{
+    if (data.size() < 13) {
+        return false;
+    }
+
+    if (!checkTarget(data[0], 889)) {
+        return false;
+    }
+
+    std::vector<bool> deflatedData;
+    for (unsigned int offset = 1; offset < data.size(); offset++)
+    {
+        bool pulse = (offset % 2);
+        if (checkTarget(data[offset], 889 * 3)) {
+            deflatedData.push_back(pulse);
+            deflatedData.push_back(pulse);
+            deflatedData.push_back(pulse);
+        } else if (checkTarget(data[offset], 889 * 2)) {
+            deflatedData.push_back(pulse);
+            deflatedData.push_back(pulse);
+        } else if (checkTarget(data[offset], 889)) {
+            deflatedData.push_back(pulse);
+        }
+    }
+
+    std::bitset<32> bits;
+    for (unsigned int i = 0, shift = 31; i < deflatedData.size(); i += 2, shift--) {
+        if (!deflatedData[i] && deflatedData[i + 1]) {
+            bits[shift--] = 1;
+        } else if (deflatedData[i] && !deflatedData[i + 1]) {
+            bits[shift--] = 0;
+        }
+    }
+
+    // We don't care about repeat bit
+    bits[29] = 0;
+
+    value = static_cast<uint32_t>(bits.to_ulong());
+    return true;
+}
+
+bool LircPP::dataToKeyRC6(const std::vector<unsigned int>& data, uint32_t& value)
+{
+    if (data.size() < 23 || data.size() > 77) {
+        return false;
+    }
+
+    // Header
+    if (!checkTarget(data[0], 444 * 6) || !checkTarget(data[1], 444 * 2)) {
+        return false;
+    }
+
+    // TODO
+
+    // Header
+    /*if (!checkTargetRC6(data[0], 920) || !checkTargetRC6(data[1], 830)) {
+        return false;
+    }
+    
+    std::bitset<32> bits;
+    for (unsigned int i = 2, shift = 31; i < data.size() - 1; i += 2, shift--) {
+        unsigned int pulse = data[i];
+        unsigned int space = data[i + 1];
+        if (checkTargetRC6(space, 563)) {
+            bits[shift] = 0;
+        } else if (checkTargetRC6(space, 1687)) {
+            bits[shift] = 1;
+        } else {
+            return false;
+        }
+    }
+
+    value = static_cast<uint32_t>(bits.to_ulong());
+    return true;*/
+
+    return false;
 }

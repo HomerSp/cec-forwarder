@@ -12,8 +12,6 @@ CecForwarder::CecForwarder(const std::string& baseDir, const std::string& keynam
     , mAdapterOpen(false)
     , mAdapter(nullptr)
     , mLirc(baseDir + "/keys/" + keyname)
-    , mPower(false)
-    , mPowerHome(false)
 {
     memset(&mKeyRepeat, 0, sizeof(KeyRepeat));
     mKeyRepeat.keycode = CEC_USER_CONTROL_CODE_UNKNOWN;
@@ -32,6 +30,8 @@ CecForwarder::CecForwarder(const std::string& baseDir, const std::string& keynam
     mCecConfig.bActivateSource = 0;
     mCecConfig.callbacks = &mCecCallbacks;
     mCecConfig.deviceTypes.Add(CEC::CEC_DEVICE_TYPE_PLAYBACK_DEVICE);
+    mCecConfig.wakeDevices.Set(CEC::CECDEVICE_TV);
+    mCecConfig.wakeDevices.Set(CEC::CECDEVICE_PLAYBACKDEVICE2);
 
     mAdapter = LibCecInitialise(&mCecConfig);
     if (mAdapter == nullptr) {
@@ -104,16 +104,20 @@ void CecForwarder::onReceive(const KeyName& key)
 
     switch (key.value()) {
     case KeyName::KEY_HOME:
-        mPowerHome = true;
-
-        mAdapter->PowerOnDevices(CEC::CECDEVICE_TV);
-        mAdapter->PowerOnDevices(CEC::CECDEVICE_PLAYBACKDEVICE2);
+        if (mAdapter->GetActiveSource() != CEC::CECDEVICE_PLAYBACKDEVICE2) {
+            mAdapter->PowerOnDevices(CEC::CECDEVICE_BROADCAST);
+        }
 
         mAdapter->SendKeypress(CEC::CECDEVICE_PLAYBACKDEVICE2, CEC::CEC_USER_CONTROL_CODE_POWER_ON_FUNCTION, true);
         mAdapter->SendKeyRelease(CEC::CECDEVICE_PLAYBACKDEVICE2, true);
 
-        mAdapter->SendKeypress(CEC::CECDEVICE_PLAYBACKDEVICE2, CEC::CEC_USER_CONTROL_CODE_ROOT_MENU, true);
-        mAdapter->SendKeyRelease(CEC::CECDEVICE_PLAYBACKDEVICE2, true);
+        // Wait at max 10 seconds for source switch
+        uint32_t i = 0;
+        while (mAdapter->GetActiveSource() != CEC::CECDEVICE_PLAYBACKDEVICE2 && i < 100) {
+            std::cerr << "Active source " << mAdapter->GetActiveSource() << "\n";
+            usleep(100);
+            i++;
+        }
 
         mAdapter->SendKeypress(CEC::CECDEVICE_PLAYBACKDEVICE2, CEC::CEC_USER_CONTROL_CODE_ROOT_MENU, true);
         mAdapter->SendKeyRelease(CEC::CECDEVICE_PLAYBACKDEVICE2, true);
@@ -178,29 +182,6 @@ void CecForwarder::cecCommand(const CEC::cec_command* command)
     case CEC_OPCODE_USER_CONTROL_RELEASE:
         memset(&mKeyRepeat, 0, sizeof(KeyRepeat));
         mKeyRepeat.keycode = CEC_USER_CONTROL_CODE_UNKNOWN;
-        break;
-
-    case CEC_OPCODE_ROUTING_CHANGE:
-        std::cerr << "Routing change power " << mPower << ", power home " << mPowerHome << "\n";
-        if (command->parameters.size == 4) {
-            if (command->parameters[0] == 0x00 && command->parameters[1] == 0x00) {
-                std::cerr << "Setting power\n";
-                mPower = !mPowerHome;
-                mPowerHome = false;
-            }
-        }
-
-        break;
-    case CEC_OPCODE_ACTIVE_SOURCE:
-        std::cerr << "Active source power " << mPower << ", power home " << mPowerHome << "\n";
-
-        if (mPower && command->parameters.size == 2 && command->parameters[0] != 0x10) {
-            std::cerr << "Switching to adapter source\n";
-            mAdapter->SetActiveSource();
-            mPower = false;
-            mPowerHome = false;
-        }
-
         break;
     }
 }
